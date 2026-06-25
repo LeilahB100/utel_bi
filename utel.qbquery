@@ -1,0 +1,181 @@
+﻿USE utel_bi;
+
+-- ────────────────────────────────────────────────────────────
+-- 1. SUBSCRIBER (central dimension table)
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS subscriber (
+    subscriber_id      INT            NOT NULL,
+    msisdn             VARCHAR(15)    NOT NULL,
+    subscriber_name    VARCHAR(100)   NOT NULL,
+    gender             CHAR(1)        NOT NULL COMMENT 'M or F',
+    region             VARCHAR(50)    NOT NULL,
+    activation_date    DATE           NOT NULL,
+    status             VARCHAR(20)    NOT NULL DEFAULT 'Active',
+
+    CONSTRAINT pk_subscriber        PRIMARY KEY (subscriber_id),
+    CONSTRAINT uq_subscriber_msisdn UNIQUE      (msisdn)
+) ENGINE=InnoDB COMMENT='Core subscriber dimension';
+
+-- ────────────────────────────────────────────────────────────
+-- 2. CALL (voice usage fact table)
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS _call (
+    call_id            INT            NOT NULL,
+    calling_msisdn     VARCHAR(15)    NOT NULL,
+    called_msisdn      VARCHAR(20)    NOT NULL COMMENT 'May be off-net/international',
+    call_date          DATE           NOT NULL,
+    duration_seconds   INT            NOT NULL CHECK (duration_seconds >= 0),
+    charge_amount      DECIMAL(12,2)  NOT NULL,
+    call_type          VARCHAR(20)    NOT NULL COMMENT 'Onnet or Offnet',
+
+    CONSTRAINT pk_call     PRIMARY KEY (call_id),
+    CONSTRAINT fk_call_sub FOREIGN KEY (calling_msisdn)
+        REFERENCES subscriber(msisdn)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB COMMENT='Voice call detail records';
+
+CREATE INDEX idx_call_date          ON _call (call_date);
+CREATE INDEX idx_call_calling_msisdn ON _call (calling_msisdn);
+
+-- ────────────────────────────────────────────────────────────
+-- 3. SMS (messaging fact table)
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sms (
+    sms_id             INT            NOT NULL,
+    source_msisdn      VARCHAR(15)    NOT NULL,
+    destination_msisdn VARCHAR(20)    NOT NULL,
+    sms_date           DATE           NOT NULL,
+    direction          VARCHAR(5)     NOT NULL COMMENT 'MO (mobile-originated) or MT',
+    message_type       VARCHAR(30)    NOT NULL,
+    charge_amount      DECIMAL(12,2)  NOT NULL,
+
+    CONSTRAINT pk_sms     PRIMARY KEY (sms_id),
+    CONSTRAINT fk_sms_sub FOREIGN KEY (source_msisdn)
+        REFERENCES subscriber(msisdn)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB COMMENT='SMS detail records';
+
+CREATE INDEX idx_sms_date         ON sms (sms_date);
+CREATE INDEX idx_sms_source_msisdn ON sms (source_msisdn);
+
+-- ────────────────────────────────────────────────────────────
+-- 4. AIRTIME_SALE (airtime top-up fact table)
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS airtime_sale (
+    sale_id            INT            NOT NULL,
+    msisdn             VARCHAR(15)    NOT NULL,
+    purchase_date      DATE           NOT NULL,
+    amount             DECIMAL(12,2)  NOT NULL CHECK (amount > 0),
+    channel            VARCHAR(30)    NOT NULL,
+
+    CONSTRAINT pk_airtime_sale  PRIMARY KEY (sale_id),
+    CONSTRAINT fk_airtime_sub   FOREIGN KEY (msisdn)
+        REFERENCES subscriber(msisdn)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB COMMENT='Airtime top-up transactions';
+
+CREATE INDEX idx_airtime_date  ON airtime_sale (purchase_date);
+CREATE INDEX idx_airtime_msisdn ON airtime_sale (msisdn);
+
+-- ────────────────────────────────────────────────────────────
+-- 5. INTERNET_BUNDLE_SALE (data bundle fact table)
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS internet_bundle_sale (
+    bundle_sale_id     INT            NOT NULL,
+    msisdn             VARCHAR(15)    NOT NULL,
+    bundle_name        VARCHAR(60)    NOT NULL DEFAULT 'Unknown',
+    purchase_date      DATE           NOT NULL,
+    amount             DECIMAL(12,2)  NOT NULL,
+    validity_days      INT            NOT NULL,
+
+    CONSTRAINT pk_bundle_sale  PRIMARY KEY (bundle_sale_id),
+    CONSTRAINT fk_bundle_sub   FOREIGN KEY (msisdn)
+        REFERENCES subscriber(msisdn)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB COMMENT='Internet data bundle purchases';
+
+CREATE INDEX idx_bundle_date  ON internet_bundle_sale (purchase_date);
+CREATE INDEX idx_bundle_msisdn ON internet_bundle_sale (msisdn);
+
+-- ────────────────────────────────────────────────────────────
+-- 6. FIBRE_SUBSCRIPTION (fixed broadband dimension/fact)
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS fibre_subscription (
+    subscription_id    INT            NOT NULL,
+    msisdn             VARCHAR(15)    NOT NULL,
+    package_name       VARCHAR(60)    NOT NULL DEFAULT 'Unknown',
+    subscription_date  DATE           NOT NULL,
+    monthly_fee        DECIMAL(12,2)  NOT NULL CHECK (monthly_fee >= 0),
+    status             VARCHAR(20)    NOT NULL DEFAULT 'Active',
+
+    CONSTRAINT pk_fibre_sub  PRIMARY KEY (subscription_id),
+    CONSTRAINT fk_fibre_sub  FOREIGN KEY (msisdn)
+        REFERENCES subscriber(msisdn)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
+) ENGINE=InnoDB COMMENT='Fibre broadband subscriptions';
+
+CREATE INDEX idx_fibre_msisdn ON fibre_subscription (msisdn);
+CREATE INDEX idx_fibre_status ON fibre_subscription (status);
+
+
+DELETE FROM _call;
+DELETE FROM sms;
+DELETE FROM airtime_sale;
+DELETE FROM fibre_subscription;
+DELETE FROM subscriber;
+DELETE FROM internet_bundle_sale;
+
+SELECT * FROM _call;
+SELECT * FROM sms;
+SELECT * FROM airtime_sale;
+SELECT * FROM fibre_subscription;
+SELECT * FROM subscriber;
+SELECT * FROM internet_bundle_sale;
+
+SELECT COUNT(*) FROM subscriber;
+
+SELECT DATE_FORMAT(activation_date, '%M'),
+COUNT(*) FROM subscriber GROUP BY
+DATE_FORMAT(activation_date, '%M');
+
+SELECT
+    COUNT(DISTINCT calling_msisdn) AS subscribers_who_called
+FROM _call;
+
+SELECT
+    COUNT(DISTINCT source_msisdn) AS subscribers_who_sent_sms
+FROM sms;
+
+SELECT
+    COUNT(DISTINCT msisdn) AS subscribers_who_bought_airtime
+FROM airtime_sale;
+
+SELECT
+    COUNT(DISTINCT msisdn) AS subscribers_who_bought_internet
+FROM internet_bundle_sale;
+
+SELECT
+    s.source_msisdn,
+    sub.subscriber_name,
+    sub.region,
+    COUNT(*)              AS total_sms_sent,
+    SUM(s.charge_amount)  AS total_sms_charges
+FROM sms s
+JOIN subscriber sub ON sub.msisdn = s.source_msisdn
+GROUP BY s.source_msisdn, sub.subscriber_name, sub.region
+ORDER BY total_sms_sent DESC
+LIMIT 10;
+
+SELECT
+    ROUND(AVG(duration_seconds), 2)        AS avg_duration_seconds,
+    ROUND(AVG(duration_seconds) / 60, 2)   AS avg_duration_minutes
+FROM _call;
+
+
+
+
