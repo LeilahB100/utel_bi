@@ -41,6 +41,7 @@ import os
 # ── paths ──────────────────────────────────────────────────────────────────
 # Base folder where all your CSV files live
 BASE_DIR = r"C:\Users\personal\Desktop\assignment"
+# the r is used to ensure that the backslshes are treated as literal characters and not escape characters.
 
 RAW = {
     "subscribers":           os.path.join(BASE_DIR, "Subscribers.csv"),
@@ -50,6 +51,8 @@ RAW = {
     "internet_bundle_sales": os.path.join(BASE_DIR, "InternetBundleSales.csv"),
     "fibre_subscriptions":   os.path.join(BASE_DIR, "FibreSubscriptions.csv"),
 }
+#os.path.join() - combines the folder path with the file name. 
+
 
 # Cleaned files will be written to a 'clean' subfolder inside the assignment folder
 OUT_DIR = os.path.join(BASE_DIR, "clean")
@@ -57,6 +60,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 MSISDN_RE = re.compile(r'^\d{9,12}$')
+# compiles a regular expression pattern that matches strings consisting of 9 to 12 digits. This pattern is used to validate MSISDNs (Mobile Station International Subscriber Directory Numbers).
 
 def validate_msisdn(series: pd.Series) -> pd.Series:
     """Return boolean mask: True where MSISDN is valid (9-12 digits)."""
@@ -110,7 +114,6 @@ print(f"  Duplicates removed: {before - len(df)}")
 
 report("Subscribers", n0, df)
 df.to_csv(os.path.join(OUT_DIR, "subscribers_clean.csv"), index=False)
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. CALLS
